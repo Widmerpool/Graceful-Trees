@@ -23,6 +23,7 @@ class Tree:
         self.edges=tcode(ident,size)
         self.adjlist=adjlist(self.edges)
         self.signature=signature(self.edges)
+        self.levels=levels(self.signature)
         self.trunk=trunk(self.edges)
         self.centre=centre(self.edges)
         self.diameter=len(self.trunk)
@@ -57,6 +58,7 @@ class Stock:
         self.edges=gcode(ident,size)
         self.adjlist=adjlist(self.edges)
         self.signature=signature(self.edges)
+        self.levels=levels(self.signature)
         self.trunk=trunk(self.edges)
         self.centre=centre(self.edges)
         self.diameter=diameter(self.edges)
@@ -86,9 +88,8 @@ class Stock:
 #===================================================================
 
 def adjlist(tree):
-    'Takes a list of edges - as pairs of vertices - and returns the list of '
-    'adjacencies. So the kth entry is a list of all the vertices adjacent to '
-    'vertex k.'
+    'Takes a list of edges - as pairs of vertices - and returns the list of adjacencies. '
+    'So the kth entry is a list of all the vertices adjacent to vertex k.'
     s=len(tree)+1
     a=[]
     for i in range(0,s):
@@ -107,8 +108,7 @@ def scale(ident):
     return s-1
 
 def fcode(ident,size=0):
-    'Takes a number, and the number of entries, and returns the Cantor '
-    'representation '
+    'Takes a number, and the number of entries, and returns the Cantor representation '
     size=max(scale(ident),size)
     f=[]
     m=0
@@ -133,7 +133,7 @@ def dcode(fb):
     return db
 
 def gcode(ident,size=0):
-    'Takes the ident of a shrub and uses its Cantor representation to produce '
+    'Takes the ident of a Stock and uses its Cantor representation to produce '
     'a list of edges (in the form of pairs of vertices). Guaranteed to be '
     'graceful, but may not be acyclic'
     fb=fcode(ident,size)
@@ -190,9 +190,21 @@ def root(tree,node):
     return rootlist
        
 def signature(graph):
-    'Converts the list version of the certificate to string form'
-    a = re.sub('\ |\[|\]','',str(certificate(graph)))
-    return re.sub('\,','-',a)
+    'Converts the hierarchic list version of the certificate to flat form'
+    c=certificate(graph)
+    if c==None:
+        return None
+    a = re.sub('\ |\[|\]','',str(c))
+    s=[]
+    while a!= "":
+        n = a.find(',')
+        if n==-1:
+            s.append(int(a))
+            a=""
+        else:
+            s.append(int(a[:n]))
+            a=a[n+1:]
+    return s
 
 def _mark_(depth,rootlist,scores,node):
     'We recursively mark vertices with their distance from a starting vertex '
@@ -349,7 +361,7 @@ def make(n):
 	return deck
 
 # lists all graceful trees of size n and their certificates
-def shrub_catalogue(n):
+def Stock_catalogue(n):
     'Outputs a list of all graceful trees of size n and their signatures '
     if n==0:
         return [[0],[0]]
@@ -366,8 +378,8 @@ def shrub_catalogue(n):
                 cat[1].append([ident])
     return cat
 
-def shrub_book(n):
-    cat=shrub_catalogue(n)
+def Stock_book(n):
+    cat=Stock_catalogue(n)
     bk={}
     for sig in cat[0]:
         bk[sig] = cat[1][cat[0].index(sig)]
@@ -405,9 +417,9 @@ def adjacency(graph): #gives back a printout of the adjacency matrix
         adj+="\n|"
         for j in range(0,i):
             if (j,i) in graph:
-                adj +="•|"
+                adj +=" • |"
             else:
-                adj +=" |"
+                adj +="   |"
         adj += " " + str(i)
     print(adj)
 
@@ -475,7 +487,7 @@ def score(hand,n):
 def census(n):
     t=time.time()
     c=[signature(gcode(0,n))]
-    cat=shrub_catalogue(n)[0]
+    cat=Stock_catalogue(n)[0]
     for deal in poll(n):
         for hand in deal:
             s=signature(gcode(score(hand,n),n))
@@ -497,13 +509,40 @@ def quiz(a,b=0):
             d=c[0][-1]
         print('\n',m,c[0],c[1],sep='\n')
             
+def mutation(graph):
+    'takes a set of edges and returns the mutation that will generate them.'
+    a=root(graph,0)
+    mudict={}
+    mutant=[]
+    k=0
+    b=0
+    mx=len(graph)
+    for node in a[1:]:
+        k+=1
+        for item in a[k]:
+            if item < mx:
+                mx=item
+            mudict[item]=k-item
+    mutant=[[mx]]
+    while len(mudict) != 0:
+        while b != mx:
+            b=mudict.pop(mutant[-1][-1])
+            if b<0:
+                b*=-1
+                mutant[-1]*=-1
+            mutant[-1].append(b)
+        mutant.append([])
+    return mutant,mudict
+
+
 def mutations(n):
+    'lists all valid cyclic mutations on n vertices'
     m=[[],[]]
     idents=[0]
     d=0
     for q in range(1,n//2+1):
         m[-1].append((q,q))
-    for i in range(0,n):
+    for i in range(0,n-1):
         m.append([])
         pool=m[-2]
         for thing in pool:
@@ -520,10 +559,24 @@ def mutations(n):
                             d=dcode(cantor(q,n))
                             if d > math.factorial(n):print(q)
                         if d not in idents:idents.append(d)
-    return sorted(idents)
-    #return m
+    #return sorted(idents)
+    return m
 
+'''def Hoffman(n):
+    M=[[],[]]
+    size=1
+    elements=[]
+    for q in range(1,n//2+1):
+        M[size].append((q,q))
+    for mutation in M[size]:
+        candidates=[x for x in list(range(1,n-1)) if x not in mutation and -x not in mutation]
+        w=len(mutation)
+        for ak in candidates:
+            for place in range(0,w):
+                if (ak)+mutation[place]<=n:'''
+                    
 def usable(a,b,c,n):
+    'tests whether a vertex can be added to a mutation'
     if a < 0:
         if abs(a)<=abs(b): return False
     if b < 0:
@@ -536,6 +589,7 @@ def usable(a,b,c,n):
     return True
 
 def cantor(mutation,size=0):
+    'returns the Cantor representation of the effect of a muttaion'
     c=[]
     m=len(mutation)
     for i in range(1,m):
@@ -552,10 +606,12 @@ def cantor(mutation,size=0):
     return c
 
 def orthogonal(cantor1,cantor2):
+    'tests whether two mutations affect disjoint subsets of vertices'
     if len(cantor1) !=len(cantor2): return None
     return sum(i[0]*i[1] for i in zip(cantor1,cantor2))==0
 
-def o(mut1,mut2,size=0):
+def merge(mut1,mut2,size=0):
+    'adds two orthogonal mutations'
     c1=cantor(mut1,size)
     c2=cantor(mut2,size)
     d=len(c1)-len(c2)
@@ -600,12 +656,11 @@ def treecount(n):
     return num[n]
 
 def trees(n):
-    'a rough and ready count of how many gcodes produce connected trees, by'
-    'number of edges.'
+    'a rough and ready count of how many gcodes produce connected trees, by number of edges.'
     num=[1, 1, 2, 4, 12, 40, 164, 752, 4020, 23576, 155632]
     if n < 11:
         return num[n]
-    return int(trees(n-1)*2*n/3)
+    return trees(n-1)*2*n//3
 
 def partitions(n,k=-1):
     'counts the number of partitions of n if the largest partition is k'
@@ -641,7 +696,6 @@ def sampling(size,sample=1000000):
     found=0
     t=time.time()
     x=0
-    #for x in range(0,min(2*m,sample)):
     while found < 30 and count < 3*m:
         ident=int(random.random()*m)
         count+=1
@@ -651,3 +705,64 @@ def sampling(size,sample=1000000):
         r=found/count
         q=int(m*found/count)
     print(time.time()-t,size,treecount(size),trees(size),q,found,count,sep='\t')
+
+def signat(lay):
+    'takes the integer layout of a rooted tree and returns the valiente signature of the tree'
+    sig=[]
+    size=len(lay)
+    for i in range(0,size-1):
+        r=lay[i]
+        c=0
+        j=i+1
+        while j<len(lay) and lay[j] > r:
+            if lay[j]==r+1:c+=1
+            j+=1
+        sig.append(c)
+    return sig+[0]
+
+def levels(signature):
+    'takes a tree signature and returns the levels list'
+    p=0
+    S=signature
+    if S==None:
+        return None
+    size=len(S)
+    L=[0]
+    w=[S[p]]
+    while w!=[] and len(L)<size:
+        q=len(w)-1
+        p+=1
+        s=S[p]
+        w[q]+=-1
+        w.append(s)
+        q+=1
+        L.append(q)
+        while w != [] and w[len(w)-1] == 0:
+            k=w.pop()
+    return L
+
+def rooted_successor(lay):
+    'takes the integer layout of a rooted tree and returns the next tree'
+    n=len(lay)
+    j=-1
+    while lay[j] == 1:
+        j=j-1
+    p=n+j
+    while lay[j] != lay[p]-1:
+        j=j-1
+    q=n+j
+    successor=lay[:p]
+    d=p-q
+    for i in range(p,n):
+        successor.append(successor[i-d])
+    return successor
+
+def rooted_count(m):
+    'returns the number of unlabelled rooted trees of size m up to isomorphism'
+    lay=list(range(0,m+1))
+    n=1
+    while lay != [0]+[1]*m:
+        n+=1
+        lay=rooted_successor(lay)
+    return n
+
