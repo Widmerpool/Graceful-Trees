@@ -13,6 +13,7 @@ from docx.oxml import parse_xml
 from docx.enum.style import WD_STYLE_TYPE
 import warnings
 import matplotlib.cbook
+import collections
 warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
 
 class Tree:
@@ -23,6 +24,7 @@ class Tree:
         self.edges=tcode(ident,size)
         self.adjlist=adjlist(self.edges)
         self.signature=signature(self.edges)
+        self.levels=levels(self.signature)
         self.trunk=trunk(self.edges)
         self.centre=centre(self.edges)
         self.diameter=len(self.trunk)
@@ -57,11 +59,13 @@ class Stock:
         self.edges=gcode(ident,size)
         self.adjlist=adjlist(self.edges)
         self.signature=signature(self.edges)
+        self.levels=levels(self.signature)
         self.trunk=trunk(self.edges)
         self.centre=centre(self.edges)
         self.diameter=diameter(self.edges)
         self.connected=is_connected(self.edges)
         self.certificate=certificate(self.edges)
+        self.mutation=mutation(self.edges)
 
     def display(self):
         graph=gcode(self.ident,self.size)
@@ -86,9 +90,8 @@ class Stock:
 #===================================================================
 
 def adjlist(tree):
-    'Takes a list of edges - as pairs of vertices - and returns the list of '
-    'adjacencies. So the kth entry is a list of all the vertices adjacent to '
-    'vertex k.'
+    'Takes a list of edges - as pairs of vertices - and returns the list of adjacencies. '
+    'So the kth entry is a list of all the vertices adjacent to vertex k.'
     s=len(tree)+1
     a=[]
     for i in range(0,s):
@@ -107,8 +110,7 @@ def scale(ident):
     return s-1
 
 def fcode(ident,size=0):
-    'Takes a number, and the number of entries, and returns the Cantor '
-    'representation '
+    'Takes a number, and the number of entries, and returns the Cantor representation '
     size=max(scale(ident),size)
     f=[]
     m=0
@@ -133,7 +135,7 @@ def dcode(fb):
     return db
 
 def gcode(ident,size=0):
-    'Takes the ident of a shrub and uses its Cantor representation to produce '
+    'Takes the ident of a Stock and uses its Cantor representation to produce '
     'a list of edges (in the form of pairs of vertices). Guaranteed to be '
     'graceful, but may not be acyclic'
     fb=fcode(ident,size)
@@ -190,9 +192,21 @@ def root(tree,node):
     return rootlist
        
 def signature(graph):
-    'Converts the list version of the certificate to string form'
-    a = re.sub('\ |\[|\]','',str(certificate(graph)))
-    return re.sub('\,','-',a)
+    'Converts the hierarchic list version of the certificate to flat form'
+    c=certificate(graph)
+    if c==None:
+        return None
+    a = re.sub('\ |\[|\]','',str(c))
+    s=[]
+    while a!= "":
+        n = a.find(',')
+        if n==-1:
+            s.append(int(a))
+            a=""
+        else:
+            s.append(int(a[:n]))
+            a=a[n+1:]
+    return s
 
 def _mark_(depth,rootlist,scores,node):
     'We recursively mark vertices with their distance from a starting vertex '
@@ -349,14 +363,15 @@ def make(n):
 	return deck
 
 # lists all graceful trees of size n and their certificates
-def shrub_catalogue(n):
+def Stock_catalogue(n):
     'Outputs a list of all graceful trees of size n and their signatures '
     if n==0:
         return [[0],[0]]
     cat=[[],[]]
     for ident in range(0,math.factorial(n),2):
-        graph=Stock(ident,n)
-        if graph.connected:
+        g=gcode(ident,n)
+        if is_connected(g):
+            graph=Stock(ident,n)
             v=graph.signature
             if v in cat[0]:
                 p=cat[0].index(v)
@@ -366,12 +381,14 @@ def shrub_catalogue(n):
                 cat[1].append([ident])
     return cat
 
-def shrub_book(n):
-    cat=shrub_catalogue(n)
+def Stock_book(n):
+    cat=Stock_catalogue(n)
     bk={}
     for sig in cat[0]:
-        bk[sig] = cat[1][cat[0].index(sig)]
-    return bk
+        j=cat[0].index(sig)
+        print(j,sig,cat[1][j],sep='\t')
+        'bk[sig] = tuple(cat[1][j])'
+    'return bk'
 
 def tree_catalogue(n):
     'Outputs a list of all graceful trees of size n and their signatures '
@@ -405,9 +422,9 @@ def adjacency(graph): #gives back a printout of the adjacency matrix
         adj+="\n|"
         for j in range(0,i):
             if (j,i) in graph:
-                adj +="•|"
+                adj +=" • |"
             else:
-                adj +=" |"
+                adj +="   |"
         adj += " " + str(i)
     print(adj)
 
@@ -425,137 +442,108 @@ def exemplars(n):
         #Stock(cat[1][i][0],n).display()
         
 '=================================================================='
-'   SWITCHES  AND OTHER MUTATIONS'
+'   MUTATIONS'
 '=================================================================='
 
-# make a deck of (atomic) switches for an n-tree
-def make(n):
-    deck=[]
-    for i in range(1,n):
-        for j in range(1,min(1+n-i,n)):
-            deck.append((i,j))
-    return deck
-
-# make a list of all possible sets of 1, 2, 3... etc. sets of independent switches for an n-tree	
-def poll(n):
-    hands=[[],[]]
-    deck=make(n)
-    for card in deck:
-        hands[1].append([card])
-    while hands[-1]!=[]:
-        hands.append([])
-        for hand in hands[-2]:
-            for card in deck:
-                if valid(card,hand):
-                    hands[-1].append(hand+[card])
-    s=len(hands)-1
-    return hands[:s]
-
-# tests whether a card is independent and can be added to a hand
-def valid(card,hand):
-	for other in hand:
-		if card[0] < other[0] or card[1]  in other or card[0] in other:
-			return False
-	return True
-	
-# gives the ident of a hand
-def score(hand,n):
-	s=0
-	for card in hand:
-		a=card[0]
-		b=card[1]
-		if a<b:
-			s+=a*math.factorial(n-b)+b*math.factorial(n-a)
-		elif a==b:
-			s+=a*math.factorial(n-a)
-		else:
-			s+=(a-b)*math.factorial(n-b)+b*math.factorial(n-a)
-	return s
-
-def census(n):
-    t=time.time()
-    c=[signature(gcode(0,n))]
-    cat=shrub_catalogue(n)[0]
-    for deal in poll(n):
-        for hand in deal:
-            s=signature(gcode(score(hand,n),n))
-            if s not in c:
-                c.append(s)
-    sorted(c,reverse=True)
-    sorted(cat,reverse=True)
-    for tree in c:
-        if tree in cat:
-            cat.remove(tree)
-    return cat,time.time()-t
-
-def quiz(a,b=0):
-    b=max(b,a+1)
-    for m in range(a,b):
-        c=census(m)
-        d=[]
-        if len(c[0])>0:
-            d=c[0][-1]
-        print('\n',m,c[0],c[1],sep='\n')
             
-def mutations(n):
-    m=[[],[]]
-    idents=[0]
-    d=0
-    for q in range(1,n//2+1):
-        m[-1].append((q,q))
-    for i in range(0,n):
-        m.append([])
-        pool=m[-2]
-        for thing in pool:
-            use=[x for x in list(range(thing[0]+2-n,n+1-thing[0])) if (x not in thing and -x not in thing)]
-            use.remove(0)
-            for slot in range(1,len(thing)):
-                a=thing[slot-1]
-                c=thing[slot]
-                for item in use:
-                    if abs(item)>thing[0]:
-                        if usable(a,item,c,n):q=thing[:slot]+(item,)+thing[slot:]
-                        if q not in m[-1]:
-                            m[-1].append(q)
-                            d=dcode(cantor(q,n))
-                            if d > math.factorial(n):print(q)
-                        if d not in idents:idents.append(d)
-    return sorted(idents)
-    #return m
+def mutation(graph):
+    'takes a set of edges and returns the mutation that will generate them.'
+    m=len(graph)
+    n=m//2
+    mu=[]
+    um=[]
+    mdict={}
+    r = root(graph,0)
+    for thing in r:
+        for item in thing:
+            for target in r[item]:
+                mdict[target]=item-target
+                um.append((target,item-target))
+    um.sort()
+    while um != []:
+        p=um.pop(0)
+        qu=[p[0],p[1]]
+        while qu[0] != qu[-1]:
+            i=um.index((qu[-1],mdict[qu[-1]]))
+            p=um[i]
+            if p[1]<0:
+                qu[-1]*=-1
+                qu.append(-p[1])
+            else:
+                qu.append(p[1])
+            um.pop(i)
+        mu.append(tuple(qu))
+        qu=[]
+    return mu
 
-def usable(a,b,c,n):
-    if a < 0:
-        if abs(a)<=abs(b): return False
-    if b < 0:
-        if abs(b)<=abs(c): return False
-    if a>0:
-        if a + abs(b) > n: return False
-    if b>0:
-        if b + abs(c) >n: return False
-    if b in (a,c): return False
-    return True
+def create_example(m):
+    'creates a random graceful tree with m edges'
+    n=int(random.random()*math.factorial(m)/2)*2
+    while not is_connected(gcode(n,m)):
+        n=int(random.random()*math.factorial(m))
+    return Stock(n,m)
+
+def cyclic(m,parity=0):
+    'lists all valid cyclic mutations on n vertices (parity is 0 if only even idents are wanted, 1 otherwise)'
+    cat=[[],[]]
+    top=m//2
+    done=False
+    i=1
+    for v in range(1,top+1):
+        cat[i].append([v,v])
+    while not done:
+        i+=1
+        cat.append([])
+        for element in cat[i-1]:
+            for v in range(upper(element)+1,m-1+parity):
+                for slot in range(0,i-1):
+                    if element[slot] >0 and abs(v+element[slot]) <= m:
+                        if v+abs(element[slot+1]) <= m:
+                            c=element[:slot+1]+[v]+element[slot+1:]
+                            if c not in cat[i]:
+                                cat[i].append(c)
+                        if v>abs(element[slot+1]):
+                            c=element[:slot+1]+[-v]+element[slot+1:]
+                            if c not in cat[i]:
+                                cat[i].append(c)
+        if cat[-1]==[]:
+            done=True
+    return cat
+
+def upper(element):
+    return max(max(element),-min(element))
+
+def topper(mutation):
+    t=0
+    for element in mutation:
+        w=len(element)-1
+        for item in element[:w]:
+            i=element.index(item)
+            t=max(item+abs(element[i+1]),t)
+    return t
 
 def cantor(mutation,size=0):
-    c=[]
-    m=len(mutation)
-    for i in range(1,m):
-        size=max(size,abs(mutation[i-1]+abs(mutation[i])))
-    for i in range(0,size):
-        c.append(0)
-    for i in range(1,m):
-        a=mutation[i-1]
-        b=mutation[i]
-        if a < 0:
-            c[abs(b)-1]=-(a+abs(b))
-        else:
-            c[abs(b)-1]=a
+    'returns the Cantor representation of the result of a mutation'
+    size=max(size,topper(mutation))
+    c=[0 for x in range(0,size)]
+    for component in mutation:
+        m=len(component)
+        for i in range(1,m):
+            a=component[i-1]
+            b=component[i]
+            if a < 0:
+                c[abs(b)-1]=-(a+abs(b))
+            else:
+                c[abs(b)-1]=a
     return c
 
 def orthogonal(cantor1,cantor2):
+    'tests whether two mutations affect disjoint subsets of vertices'
     if len(cantor1) !=len(cantor2): return None
     return sum(i[0]*i[1] for i in zip(cantor1,cantor2))==0
 
-def o(mut1,mut2,size=0):
+def merge(mut1,mut2,size=0):
+    'adds two orthogonal mutations'
     c1=cantor(mut1,size)
     c2=cantor(mut2,size)
     d=len(c1)-len(c2)
@@ -568,26 +556,134 @@ def o(mut1,mut2,size=0):
     if orthogonal(c1,c2):
         return list(i[0]+i[1] for i in zip(c1,c2))
 
-def independent(mutation_list):
-    size=len(mutation_list)
-    for mutation in mutation_list[:size-1]:
-        p=mutation_list.index(mutation)
-        for other in mutation_list[p+1:]:
-            for item in other:
-                if item in mutation or -item in mutation: return False
+def independent(item1,item2):
+    for component in item1:
+        for element in component:
+            for target in item2:
+                if element in target or -element in target:
+                    return False
     return True
+    
+def _mutations_(n,parity):
+    mu=[[(0,0)]]
+    cy=cyclic(n,parity)
+    for level in cy:
+        for thing in level:
+            mu.append([tuple(thing)])
+    return mu
 
-def mix(n):
-    'generates a complete set of all mutations and all compositions of mutations'
-    m=[]
-    mu=mutations(n)
+def _compose_(mu):
+    checker=[]
+    multi=[]
+    for thing in mu[1:]:
+        i=mu.index(thing)
+        for other in mu[i+1:]:
+            if independent(thing,other):
+                it=thing+other
+                it.sort()
+                cant=dcode(cantor(it))
+                if it not in mu:
+                    mu.append(it)
+                    checker.append(cant)
+                    if checker.count(cant)>1 and cant not in multi:
+                        multi.append(cant)
+    redo=True
+    while redo:
+        redo=False
+        for thing in mu[1:]:
+            if cantor(thing) in multi:
+                redo=True
+                mu.remove(thing)        
+    return mu
 
-def mutation_signatures(n):
-    m=mutations(n)
+def mutations(m,parity=0):
+    'generates a complete set of all mutations and all compositions of mutations. parity is 0 if only even idents are wanted, 1 otherwise'
+    return _compose_(_mutations_(m,parity))
+
+def mutations_catalogue(m,parity=0):
+    'generates a catalogue of all mutations on m edges'
+    M=mutations(m,parity)
+    cat=[]
+    for thing in M:
+        c=cantor(thing,m)
+        d=dcode(cantor(thing,m))
+        s=signature(gcode(d,m))
+        cat.append((d,thing,c,s))
+    cat.sort()
+    return cat
+
+def list_mutations(m,parity=0):
+    'prints signature, cantor representation, ident, and mutation of all mutable trees on m edges'
+    C=mutations_catalogue(m,parity)
+    widths=[0,0,0,0]
+    for row in C:
+        for i in range(0,3):
+            widths[i]=max(widths[i],len(str(row[i]))+2)
+    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'SIGNATURE')
+    for row in C:
+        for i in range(0,4):
+            print(row[i],' '*(widths[i]-len(str(row[i]))),end='')
+        print('')
+        
+
+def list_exceptions(m,parity=0):
+    C=mutations_catalogue(m,parity)
+    widths=[0,0,0,0]
+    for row in C:
+        for i in range(0,3):
+            widths[i]=max(widths[i],len(str(row[i]))+2)
+    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'SIGNATURE')
+    for row in C:
+        if row[3]==None:
+            for i in range(0,4):
+                print(row[i],' '*(widths[i]-len(str(row[i]))),end='')
+            print('')
+
+def list_clean(m,parity=0):
+    C=mutations_catalogue(m,parity)
+    widths=[0,0,0,0]
+    for row in C:
+        for i in range(0,3):
+            widths[i]=max(widths[i],len(str(row[i]))+2)
+    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'SIGNATURE')
+    for row in C:
+        if row[3]!=None:
+            for i in range(0,4):
+                print(row[i],' '*(widths[i]-len(str(row[i]))),end='')
+            print('')
+
+def test_mutation(mutation):
+    check=[]
+    burn=[]
+    for sub in mutation:
+        for i in range(0,len(sub)-1):
+            if sub[i]<0:
+                a=abs(sub[i])
+            else:
+                a=sub[i]+abs(sub[i+1])
+            check.append(a)
+            burn.append(a)
+    while burn != []:
+        if burn.pop() in burn:
+            return (check,False)
+    return (check,True)
+          
+def comp(q):
+    for m in range(3,q+1):
+        n=0
+        t=len(mutations_catalogue(m))
+        for x in range(0,math.factorial(m),2):
+            if is_connected(gcode(x,m)):
+                n+=1
+        print(m,"Graphs:",n,"Trees:",trees(m)//2,"Mutations:",t,"Wronguns:",t-n,sep='\t')
+    
+def mutation_signatures(m,parity=0):
+    mu=mutations(m,parity)
     ms=[]
-    for tree in m:
-        ts=signature(gcode(tree,n))
-        if ts != 'None' and ts not in ms:
+    for tree in mu:
+        ident=dcode(cantor(tree,m))
+        ts=signature(gcode(ident,m))
+        if ts not in ms:
             ms.append(ts)
     return sorted(ms,reverse=True)
 
@@ -600,12 +696,11 @@ def treecount(n):
     return num[n]
 
 def trees(n):
-    'a rough and ready count of how many gcodes produce connected trees, by'
-    'number of edges.'
+    'a rough and ready count of how many gcodes produce connected trees, by number of edges.'
     num=[1, 1, 2, 4, 12, 40, 164, 752, 4020, 23576, 155632]
     if n < 11:
         return num[n]
-    return int(trees(n-1)*2*n/3)
+    return trees(n-1)*2*n//3
 
 def partitions(n,k=-1):
     'counts the number of partitions of n if the largest partition is k'
@@ -641,7 +736,6 @@ def sampling(size,sample=1000000):
     found=0
     t=time.time()
     x=0
-    #for x in range(0,min(2*m,sample)):
     while found < 30 and count < 3*m:
         ident=int(random.random()*m)
         count+=1
@@ -651,3 +745,64 @@ def sampling(size,sample=1000000):
         r=found/count
         q=int(m*found/count)
     print(time.time()-t,size,treecount(size),trees(size),q,found,count,sep='\t')
+
+def signat(lay):
+    'takes the integer layout of a rooted tree and returns the valiente signature of the tree'
+    sig=[]
+    size=len(lay)
+    for i in range(0,size-1):
+        r=lay[i]
+        c=0
+        j=i+1
+        while j<len(lay) and lay[j] > r:
+            if lay[j]==r+1:c+=1
+            j+=1
+        sig.append(c)
+    return sig+[0]
+
+def levels(signature):
+    'takes a tree signature and returns the levels list'
+    p=0
+    S=signature
+    if S==None:
+        return None
+    size=len(S)
+    L=[0]
+    w=[S[p]]
+    while w!=[] and len(L)<size:
+        q=len(w)-1
+        p+=1
+        s=S[p]
+        w[q]+=-1
+        w.append(s)
+        q+=1
+        L.append(q)
+        while w != [] and w[len(w)-1] == 0:
+            k=w.pop()
+    return L
+
+def rooted_successor(lay):
+    'takes the integer layout of a rooted tree and returns the next tree'
+    n=len(lay)
+    j=-1
+    while lay[j] == 1:
+        j=j-1
+    p=n+j
+    while lay[j] != lay[p]-1:
+        j=j-1
+    q=n+j
+    successor=lay[:p]
+    d=p-q
+    for i in range(p,n):
+        successor.append(successor[i-d])
+    return successor
+
+def rooted_count(m):
+    'returns the number of unlabelled rooted trees of size m up to isomorphism'
+    lay=list(range(0,m+1))
+    n=1
+    while lay != [0]+[1]*m:
+        n+=1
+        lay=rooted_successor(lay)
+    return n
+
