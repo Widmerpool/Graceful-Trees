@@ -1,4 +1,5 @@
-﻿import math
+import math
+import numpy as np
 import re
 import networkx as nx
 import pylab
@@ -30,6 +31,7 @@ class Tree:
         self.diameter=len(self.trunk)
         self.connected=is_connected(self.edges)
         self.certificate=certificate(self.edges)
+        self.prufer = prufer(self.edges)
 
     def display(self):
         graph=tcode(self.ident,self.size)
@@ -66,6 +68,7 @@ class Stock:
         self.connected=is_connected(self.edges)
         self.certificate=certificate(self.edges)
         self.mutation=mutation(self.edges)
+        self.prufer = prufer(self.edges)
 
     def display(self):
         graph=gcode(self.ident,self.size)
@@ -90,7 +93,7 @@ class Stock:
 #===================================================================
 
 def adjlist(tree):
-    'Takes a list of edges - as pairs of vertices - and returns the list of adjacencies. '
+    'Takes a list of edges - as pairs of vertices, such as object.edges - and returns the list of adjacencies. '
     'So the kth entry is a list of all the vertices adjacent to vertex k.'
     s=len(tree)+1
     a=[]
@@ -134,6 +137,26 @@ def dcode(fb):
         s=s-1
     return db
 
+def prufer(graph):
+    a = adjlist(graph)
+    s = len(graph)
+    pru = []
+    for i in range(s):
+        j = 0
+        doing = True
+        while doing:
+            if len(a[j])  == 1:
+                c = a[j][0]
+                pru.append(c)
+                a[j] = []
+                for thing in a:
+                    if j in thing:
+                        thing.remove(j)
+                doing = False
+            j += 1
+            if  j == s:
+                return pru
+
 def gcode(ident,size=0):
     'Takes the ident of a Stock and uses its Cantor representation to produce '
     'a list of edges (in the form of pairs of vertices). Guaranteed to be '
@@ -145,18 +168,16 @@ def gcode(ident,size=0):
     return G
 
 def tcode(ident,size=0):
-    'Takes the ident of a tree and uses its Cantor representation to produce a '
+    'Takes the ident of a Tree and uses its Cantor representation to produce a '
     'list of edges (in the form of pairs of vertices). Guaranteed to be acyclic '
-    'but (except for ident = 0, which yields a star) not graceful'
+    'but (except for ident = 0 or ident = size!, which yield stars) not graceful'
     size=max(scale(ident),size)
     f=fcode(ident,size)
-    t=[]
-    for i in range(0,size):
-        t.append((f[i],size-i))
+    t=[(f[i],size+1-i) for i in range(size + 1)]
     return t
                 
 def degree_list(graph):
-    'A list of the degrees of all the vertices'
+    'A list of the degrees of all the vertices, ordered by label'
     d=[]
     alist=adjlist(graph)
     for i in range(0,len(alist)):
@@ -175,7 +196,7 @@ def centre(graph):
     return [L[r],L[s]]
 
 def _root_(alist,node):
-    'Recursively turns the adjacency list of an undirected unrooted tree '
+    'Recursively converts the adjacency list of an undirected unrooted tree '
     'into the adjacency list of a directed tree rooted at "node" '
     fork=alist[node]
     for tine in fork:
@@ -184,11 +205,11 @@ def _root_(alist,node):
             _root_(alist,tine)
     return alist
 
-def root(tree,node):
+def root(graph,node=0):
     'A wrapper for the "_root_" function, taking a tree, and a node to be the '
     'root; and outputting the adjacency list of the directed rooted version of '
     'the tree'
-    rootlist = _root_(adjlist(tree),node)
+    rootlist = _root_(adjlist(graph),node)
     return rootlist
        
 def signature(graph):
@@ -307,8 +328,9 @@ def certificate(graph):
     if is_connected(graph):
         c=centre(graph)
         a=adjlist(graph)
-        w=[label(c[0],root(graph,c[0])),label(c[1],root(graph,c[1]))]
-        return sorted(w)[1]
+        w=[label(c[0],root(graph,c[0])),label(c[-1],root(graph,c[-1]))]
+        w.sort()
+        return w[1]
     return None    
     
 def label(node,rootlist):
@@ -440,7 +462,65 @@ def exemplars(n):
     for i in range(0,w):
         print(n,i,cat[0][i],sep='\t')
         #Stock(cat[1][i][0],n).display()
-        
+
+def pathsig(m):
+    if m == 0:
+        return [1]
+    elif m == 1:
+        return [1,0]
+    elif m == 2:
+        return [2,0,0]
+    elif m == 3:
+        return [2,1,0,0]
+    else:
+        p = m%2
+        n = m-1
+        q = pathsig(n)
+        if p == 1:
+            q.insert(1,1)
+            return q
+        else:
+            q.insert(-1,1)
+    return q
+
+def deep(alist,i):
+    if alist[i] == []:
+        return 0
+    return min([1 + deep(alist,item) for item in alist[i]])
+
+def zero_depth(graph):
+    alist = root(graph)
+    return deep(alist,0)
+
+def pathlist(m,parity = 0):
+    if parity == 0:
+        p = 2
+    else:
+        p = 1
+    paths=[]
+    maxdepth = m//2 + m%2
+    sig = pathsig(m)
+    for r in range(0,math.factorial(m),p):
+        S = Stock(r,m)
+        if S.connected:
+            if S.signature == sig:
+                z = zero_depth(S.edges)
+                d = min(z,m-z)
+                paths.append((r,S.mutation,S.fcode,S.trunk,d))
+    return paths
+
+def path_catalogue(m,parity = 0):
+    print("======================\n",m,end = '\t')
+    t = time.time()
+    p = pathlist(m,parity)
+    t = int((time.time() - t)*1000+.5)/1000
+    duration =  time.strftime('%H:%M:%S', time.localtime(t+0.5))
+    print(str(len(p)) + " paths:\t","t =" + duration ,"\t("+str(t)+"sec)","\n======================")
+    for thing in p:
+        for item in thing:
+            print(item,end='\t')
+        print("")
+
 '=================================================================='
 '   MUTATIONS'
 '=================================================================='
@@ -448,6 +528,9 @@ def exemplars(n):
             
 def mutation(graph):
     'takes a set of edges and returns the mutation that will generate them.'
+    if not is_connected(graph):
+        return None
+
     m=len(graph)
     n=m//2
     mu=[]
@@ -464,7 +547,10 @@ def mutation(graph):
         p=um.pop(0)
         qu=[p[0],p[1]]
         while qu[0] != qu[-1]:
-            i=um.index((qu[-1],mdict[qu[-1]]))
+            try:
+                i=um.index((qu[-1],mdict[qu[-1]]))
+            except KeyError:
+                return [(0)]
             p=um[i]
             if p[1]<0:
                 qu[-1]*=-1
@@ -606,11 +692,29 @@ def mutations_catalogue(m,parity=0):
     cat=[]
     for thing in M:
         c=cantor(thing,m)
-        d=dcode(cantor(thing,m))
+        d=dcode(c)
         s=signature(gcode(d,m))
-        cat.append((d,thing,c,s))
+        cat.append((d,s,thing,c))
     cat.sort()
     return cat
+
+def x(mu1,mu2,size=0):
+    s=0
+    for mu in (mu1,mu2):
+        for thing in mu:
+            s=max(s,max(thing),-min(thing))
+    size=max(size,s*2)
+    c=cantor(mu2,size)
+    c2=c[:]
+    for part in mu1:
+        w=len(part)-1
+        for p in range(0,w):
+            c2[part[p+1]]=c[part[p]]
+    d=dcode(c2)
+    g=gcode(d,size)
+    print(d,g)
+    mu=mutation(g)
+    return mu
 
 def list_mutations(m,parity=0):
     'prints signature, cantor representation, ident, and mutation of all mutable trees on m edges'
@@ -632,9 +736,12 @@ def list_exceptions(m,parity=0):
     for row in C:
         for i in range(0,3):
             widths[i]=max(widths[i],len(str(row[i]))+2)
-    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'SIGNATURE')
+    print('\t','ID',' '*(widths[0]-3),'SIGNATUR ',' '*(widths[1]-9),'MUTATIONS',' '*(widths[2]-7),'SIGNATURE')
+    s=0
     for row in C:
-        if row[3]==None:
+        if row[1]==None:
+            s+=1
+            print(s,end='\t')
             for i in range(0,4):
                 print(row[i],' '*(widths[i]-len(str(row[i]))),end='')
             print('')
@@ -645,9 +752,9 @@ def list_clean(m,parity=0):
     for row in C:
         for i in range(0,3):
             widths[i]=max(widths[i],len(str(row[i]))+2)
-    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'SIGNATURE')
+    print('ID',' '*(widths[0]-3),'MUTATION',' '*(widths[1]-9),'CANTOR',' '*(widths[2]-7),'CANTOR')
     for row in C:
-        if row[3]!=None:
+        if row[1]!=None:
             for i in range(0,4):
                 print(row[i],' '*(widths[i]-len(str(row[i]))),end='')
             print('')
@@ -670,12 +777,9 @@ def test_mutation(mutation):
           
 def comp(q):
     for m in range(3,q+1):
-        n=0
+        n=trees(m)
         t=len(mutations_catalogue(m))
-        for x in range(0,math.factorial(m),2):
-            if is_connected(gcode(x,m)):
-                n+=1
-        print(m,"Graphs:",n,"Trees:",trees(m)//2,"Mutations:",t,"Wronguns:",t-n,sep='\t')
+        print(m,"Trees:",n,"Mutations:",t,"Wronguns:",t-n,sep='\t')
     
 def mutation_signatures(m,parity=0):
     mu=mutations(m,parity)
@@ -695,12 +799,16 @@ def treecount(n):
     num=[1, 1, 1, 2, 3, 6, 11, 23, 47, 106, 235, 551, 1301, 3159, 7741, 19320, 48629, 123867, 317955, 823065, 2144505, 5623756, 14828074, 39299897, 104636890, 279793450, 751065460, 2023443032, 5469566585, 14830871802, 40330829030, 109972410221, 300628862480, 823779631721, 2262366343746, 6226306037178]
     return num[n]
 
-def trees(n):
+def trees(n,parity=0):
     'a rough and ready count of how many gcodes produce connected trees, by number of edges.'
-    num=[1, 1, 2, 4, 12, 40, 164, 752, 4020, 23576, 155632]
-    if n < 11:
-        return num[n]
-    return trees(n-1)*2*n//3
+    num=[1,1,1,2,6,20,82,376,2010,11788,77816,556016]
+    if n < 12:
+        return num[n]*(1+parity)
+    return trees(n-1,parity)*(0.6424*n + 0.1431)
+
+def wrong_mutations(m):
+    C=mutations(m)
+    return len(C)-trees(m)//2
 
 def partitions(n,k=-1):
     'counts the number of partitions of n if the largest partition is k'
@@ -802,7 +910,37 @@ def rooted_count(m):
     lay=list(range(0,m+1))
     n=1
     while lay != [0]+[1]*m:
+##        print(n,lay,signat(lay),sep='\t')
         n+=1
         lay=rooted_successor(lay)
+##    print(n,lay,signat(lay),sep='\t')
     return n
 
+def k_mutations(n):
+    f=[0]
+    for j in range(0,n+1):
+        f.append(0)
+    h=f[:]
+    C=mutations_catalogue(n,0)
+    for thing in C:
+        if len(thing[1])==1:
+            h[len(thing[1][0])] += 1
+    print('\n',j,") : ",'\t',end='\t')
+    for item in h:
+        print(item,end='\t')
+    C=mutations_catalogue(n,1)
+    for thing in C:
+        if len(thing[1])==1:
+            h[len(thing[1][0])] += 1
+    print(" : ",'\t',end='\t')
+    for item in h:
+        print(item,end='\t')
+
+def interleaf(mutation):
+    inter=[]
+    for perm in mutation:
+        temp=[]
+        for a in range(0,len(perm)-1):
+            temp.append(perm[a]+perm[a+1])
+        inter.append(tuple(temp))
+    return(inter)
