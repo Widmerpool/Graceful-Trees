@@ -31,7 +31,7 @@ class Tree:
         self.diameter=len(self.trunk)
         self.connected=is_connected(self.edges)
         self.certificate=certificate(self.edges)
-        self.prufer = prufer(self.edges)
+        self.prufer = tree_to_prufer(self.edges)
 
     def display(self):
         graph=tcode(self.ident,self.size)
@@ -45,8 +45,7 @@ class Tree:
         plt.show()
 
     def flip(self):
-        i=math.factorial(self.size)-1-self.ident
-        return Tree(i,self.size)
+        return Tree(converse(self.ident,self.size),self.size)
 
     def bud(self):
         i=dcode(self.fcode+[0])
@@ -68,7 +67,7 @@ class Stock:
         self.connected=is_connected(self.edges)
         self.certificate=certificate(self.edges)
         self.mutation=mutation(self.edges)
-        self.prufer = prufer(self.edges)
+        self.prufer = tree_to_prufer(self.edges)
 
     def display(self):
         graph=gcode(self.ident,self.size)
@@ -82,8 +81,7 @@ class Stock:
         plt.show()
 
     def flip(self):
-        i=math.factorial(self.size)-1-self.ident
-        return Stock(i,self.size)
+        return Stock(converse(self.ident,self.size),self.size)
 
     def bud(self):
         i=dcode(self.fcode+[0])
@@ -137,25 +135,48 @@ def dcode(fb):
         s=s-1
     return db
 
-def prufer(graph):
-    a = adjlist(graph)
-    s = len(graph)
+def converse(ident,size=0):
+    size=max(scale(ident),size)
+    return math.factorial(size)-1-ident
+
+def tree_to_prufer(g):
+    'takes a graceful graph (as a list of edges, i.e. vertex pairs) and returns its Prüfer code'
+    size = len(g)
+    if not is_connected(g):
+        return None
+    a = adjlist(g)
     pru = []
-    for i in range(s):
-        j = 0
-        doing = True
-        while doing:
-            if len(a[j])  == 1:
-                c = a[j][0]
+    while len(pru) != size - 1:
+        for i in range(size):
+            if len(a[i]) == 1:
+                c = a[i][0]
                 pru.append(c)
-                a[j] = []
+                a[i] = []
                 for thing in a:
-                    if j in thing:
-                        thing.remove(j)
-                doing = False
-            j += 1
-            if  j == s:
-                return pru
+                    if i in thing:
+                        thing.remove(i)
+                break
+    return pru
+
+def prufer_ident(pru):
+    'takes a graceful Prüfer code and returns the Cantor ident of the tree'
+    if pru == None:
+        return None
+    size = len(pru)+2
+    p = [thing for thing in pru]
+    e = []
+    r = {i for i in range(len(p)+2)}
+    rs = r - set(p)
+    while p != []:
+        rs = r - set(p)
+        s = p.pop(0)
+        t = min(rs)
+        r.remove(t)
+        e.append((max(s,t) - min(s,t),min(s,t)))
+    e.append(tuple(r - set(p)))
+    e.sort()
+    print(p,e,rs,sep = '\t')
+    return dcode([thing[1] for thing in e] + [0])
 
 def gcode(ident,size=0):
     'Takes the ident of a Stock and uses its Cantor representation to produce '
@@ -504,12 +525,15 @@ def pathlist(m,parity = 0):
         S = Stock(r,m)
         if S.connected:
             if S.signature == sig:
-                z = zero_depth(S.edges)
-                d = min(z,m-z)
-                paths.append((r,S.mutation,S.fcode,S.trunk,d))
+                zd = zero_depth(S.edges)
+                T = S.flip()
+                md =  zero_depth(T.edges)
+                d,e = (min(zd,m-zd),min(md,m-md))
+                paths.append((r,S.mutation,S.fcode,S.trunk,d,e))
     return paths
 
 def path_catalogue(m,parity = 0):
+    'generates a list of all paths of length m'
     print("======================\n",m,end = '\t')
     t = time.time()
     p = pathlist(m,parity)
@@ -562,7 +586,7 @@ def mutation(graph):
         qu=[]
     return mu
 
-def create_example(m):
+def example(m):
     'creates a random graceful tree with m edges'
     n=int(random.random()*math.factorial(m)/2)*2
     while not is_connected(gcode(n,m)):
